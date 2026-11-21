@@ -49,7 +49,7 @@ def _smoke_test() -> int:
 
     import numpy as np
     import napari
-    from qtpy import QtCore, QtWidgets
+    from qtpy import QtCore
 
     from spektrafilm import init_params, simulate
     from spektrafilm_gui.app import create_app
@@ -73,12 +73,29 @@ def _smoke_test() -> int:
     app = create_app()
     _smoke_log('GUI created')
     show_viewer_window(app.viewer)
-    # The viewer lives inside spektrafilm's own main window, so closing the
-    # viewer alone does not end the event loop; quit the application instead.
-    QtCore.QTimer.singleShot(3000, QtWidgets.QApplication.instance().quit)
+
+    def finish() -> None:
+        _smoke_log('OK')
+        _hard_exit(0)
+
+    # Exit from inside the running event loop: letting Qt shut down while the
+    # GUI's background warmup thread is still busy crashes on Windows.
+    QtCore.QTimer.singleShot(3000, finish)
     napari.run()
-    _smoke_log('OK')
-    return 0
+    _smoke_log('event loop ended before the smoke test finished')
+    return 1
+
+
+def _hard_exit(status: int) -> None:
+    """Exit immediately, skipping interpreter, Qt and DLL teardown."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if sys.platform == 'win32':
+        # ExitProcess would still run DLL detach handlers; skip those too.
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.TerminateProcess(kernel32.GetCurrentProcess(), status)
+    os._exit(status)
 
 
 def main() -> None:
@@ -95,17 +112,7 @@ def main() -> None:
             # blocking error dialog instead of exiting.
             traceback.print_exc()
             status = 1
-        # Skip interpreter teardown: background warmup threads would otherwise
-        # keep the process alive after the window closes.
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if sys.platform == 'win32':
-            # ExitProcess runs DLL detach handlers, which crash in Qt's thread
-            # storage while worker threads are still alive; skip them.
-            import ctypes
-            kernel32 = ctypes.windll.kernel32
-            kernel32.TerminateProcess(kernel32.GetCurrentProcess(), status)
-        os._exit(status)
+        _hard_exit(status)
 
     from spektrafilm_gui.app import main as gui_main
     gui_main()
