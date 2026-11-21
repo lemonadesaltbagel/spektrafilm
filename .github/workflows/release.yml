@@ -53,6 +53,13 @@ jobs:
       - name: Build bundle
         run: pyinstaller --noconfirm --clean --distpath dist --workpath build/pyinstaller packaging/spektrafilm.spec
 
+      # Windows runners have no GPU and only OpenGL 1.1; install Mesa's
+      # software OpenGL so napari's canvas can render during the smoke test.
+      # It is not shipped in the bundle.
+      - name: Install software OpenGL
+        if: runner.os == 'Windows'
+        uses: pyvista/setup-headless-display-action@v3
+
       - name: Smoke test bundle
         timeout-minutes: 15
         env:
