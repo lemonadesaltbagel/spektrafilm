@@ -84,7 +84,8 @@ jobs:
         id: package
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            version="$GITHUB_REF_NAME"
+            # v0.3.4 -> 0.3.4, matching the sdist/wheel file names.
+            version="${GITHUB_REF_NAME#v}"
           else
             version="dev-${GITHUB_SHA::7}"
           fi
