@@ -49,10 +49,11 @@ def _smoke_test() -> int:
 
     import numpy as np
     import napari
-    from qtpy import QtCore
+    from qtpy import QtCore, QtWidgets
 
     from spektrafilm import init_params, simulate
     from spektrafilm_gui.app import create_app
+    from spektrafilm_gui.napari_layout import show_viewer_window
     _smoke_log('imports done')
 
     # Same cheap settings as the test suite: this checks that the bundled
@@ -71,7 +72,10 @@ def _smoke_test() -> int:
 
     app = create_app()
     _smoke_log('GUI created')
-    QtCore.QTimer.singleShot(3000, app.viewer.close)
+    show_viewer_window(app.viewer)
+    # The viewer lives inside spektrafilm's own main window, so closing the
+    # viewer alone does not end the event loop; quit the application instead.
+    QtCore.QTimer.singleShot(3000, QtWidgets.QApplication.instance().quit)
     napari.run()
     _smoke_log('OK')
     return 0
