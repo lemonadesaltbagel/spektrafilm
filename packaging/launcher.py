@@ -1,12 +1,14 @@
 """Entry point for the frozen (PyInstaller) spektrafilm desktop app.
 
 Set ``SPEKTRAFILM_SMOKE_TEST=1`` to build the GUI, run one small simulation
-and exit; CI uses this to check that a bundle actually starts.
+and exit; CI uses this to check that a bundle actually starts. Output goes to
+the file named by ``SPEKTRAFILM_SMOKE_LOG`` when it is set.
 """
 
 import multiprocessing
 import os
 import sys
+import traceback
 from pathlib import Path
 
 
@@ -37,10 +39,10 @@ def _smoke_test() -> int:
     import napari
     from qtpy import QtCore
 
-    from spektrafilm import create_params, simulate
+    from spektrafilm import init_params, simulate
     from spektrafilm_gui.app import create_app
 
-    params = create_params(film_profile='kodak_portra_400', print_profile='kodak_portra_endura')
+    params = init_params(film_profile='kodak_portra_400', print_profile='kodak_portra_endura')
     image = np.full((32, 32, 3), 0.18, dtype=np.float64)
     result = simulate(image, params)
     if not np.all(np.isfinite(result)):
@@ -55,12 +57,24 @@ def _smoke_test() -> int:
 
 
 def main() -> None:
+    smoke_log = os.environ.get('SPEKTRAFILM_SMOKE_LOG')
+    if smoke_log:
+        # Windowed bundles have no console, so the smoke test reports to a file.
+        sys.stdout = sys.stderr = open(smoke_log, 'w', buffering=1)
     _configure_environment()
     if os.environ.get('SPEKTRAFILM_SMOKE_TEST'):
+        try:
+            status = _smoke_test()
+        except BaseException:
+            # An uncaught exception would make the windowed bootloader show a
+            # blocking error dialog instead of exiting.
+            traceback.print_exc()
+            status = 1
         # Skip interpreter teardown: background warmup threads would otherwise
         # keep the process alive after the window closes.
         sys.stdout.flush()
-        os._exit(_smoke_test())
+        sys.stderr.flush()
+        os._exit(status)
 
     from spektrafilm_gui.app import main as gui_main
     gui_main()

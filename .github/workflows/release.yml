@@ -23,7 +23,7 @@ jobs:
           - name: linux-x86_64
             os: ubuntu-22.04
           - name: macos-arm64
-            os: macos-14
+            os: macos-latest
           - name: windows-x86_64
             os: windows-latest
     defaults:
@@ -53,16 +53,21 @@ jobs:
         timeout-minutes: 15
         env:
           SPEKTRAFILM_SMOKE_TEST: '1'
+          SPEKTRAFILM_SMOKE_LOG: smoke.log
         run: |
           case "$RUNNER_OS" in
             Linux)
               sudo apt-get install -y xvfb >/dev/null
-              xvfb-run -a dist/spektrafilm/spektrafilm ;;
+              app=(xvfb-run -a dist/spektrafilm/spektrafilm) ;;
             macOS)
-              dist/spektrafilm.app/Contents/MacOS/spektrafilm ;;
+              app=(dist/spektrafilm.app/Contents/MacOS/spektrafilm) ;;
             Windows)
-              dist/spektrafilm/spektrafilm.exe ;;
+              app=(dist/spektrafilm/spektrafilm.exe) ;;
           esac
+          status=0
+          "${app[@]}" || status=$?
+          cat smoke.log
+          exit $status
 
       - name: Package bundle
         id: package
