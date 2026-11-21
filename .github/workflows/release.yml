@@ -46,6 +46,10 @@ jobs:
       - name: Install package and PyInstaller
         run: uv pip install . "pyinstaller>=6.11"
 
+      - name: Fix conflicting vendored dylibs
+        if: runner.os == 'macOS'
+        run: packaging/macos_fix_dylibs.sh
+
       - name: Build bundle
         run: pyinstaller --noconfirm --clean --distpath dist --workpath build/pyinstaller packaging/spektrafilm.spec
 
@@ -66,7 +70,7 @@ jobs:
           esac
           status=0
           "${app[@]}" || status=$?
-          cat smoke.log
+          cat smoke.log || echo "no smoke.log written"
           exit $status
 
       - name: Package bundle

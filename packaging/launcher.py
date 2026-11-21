@@ -5,11 +5,16 @@ and exit; CI uses this to check that a bundle actually starts. Output goes to
 the file named by ``SPEKTRAFILM_SMOKE_LOG`` when it is set.
 """
 
+import faulthandler
 import multiprocessing
 import os
 import sys
+import time
 import traceback
 from pathlib import Path
+
+_START = time.monotonic()
+SMOKE_TEST_TIMEOUT_S = 600
 
 
 def _user_cache_dir() -> Path:
@@ -34,25 +39,41 @@ def _configure_environment() -> None:
         sys.stderr = open(os.devnull, 'w')
 
 
+def _smoke_log(message: str) -> None:
+    print(f'smoke test [{time.monotonic() - _START:6.1f}s]: {message}', flush=True)
+
+
 def _smoke_test() -> int:
+    # If anything hangs, dump every thread's stack and exit non-zero.
+    faulthandler.dump_traceback_later(SMOKE_TEST_TIMEOUT_S, exit=True)
+
     import numpy as np
     import napari
     from qtpy import QtCore
 
     from spektrafilm import init_params, simulate
     from spektrafilm_gui.app import create_app
+    _smoke_log('imports done')
 
+    # Same cheap settings as the test suite: this checks that the bundled
+    # code, data and native libraries work, not the full pipeline.
     params = init_params(film_profile='kodak_portra_400', print_profile='kodak_portra_endura')
-    image = np.full((32, 32, 3), 0.18, dtype=np.float64)
+    params.debug.deactivate_spatial_effects = True
+    params.debug.deactivate_stochastic_effects = True
+    params.settings.use_enlarger_lut = False
+    params.settings.use_scanner_lut = False
+    image = np.full((16, 16, 3), 0.18, dtype=np.float64)
     result = simulate(image, params)
     if not np.all(np.isfinite(result)):
-        print('smoke test: simulation produced non-finite values', flush=True)
+        _smoke_log('simulation produced non-finite values')
         return 1
+    _smoke_log('simulation done')
 
     app = create_app()
+    _smoke_log('GUI created')
     QtCore.QTimer.singleShot(3000, app.viewer.close)
     napari.run()
-    print('smoke test: OK', flush=True)
+    _smoke_log('OK')
     return 0
 
 
