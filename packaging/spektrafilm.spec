@@ -9,6 +9,8 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 with open(Path(SPECPATH).parent / 'pyproject.toml', 'rb') as f:
     VERSION = tomllib.load(f)['project']['version']
+# macOS wants a purely numeric bundle version: drop a PEP 440 local part (+zh1).
+APP_VERSION = VERSION.split('+')[0]
 
 datas, binaries, hiddenimports = [], [], []
 
@@ -89,9 +91,9 @@ if sys.platform == 'darwin':
         coll,
         name='spektrafilm.app',
         bundle_identifier='io.github.spektrafilm',
-        version=VERSION,
+        version=APP_VERSION,
         info_plist={
-            'CFBundleShortVersionString': VERSION,
+            'CFBundleShortVersionString': APP_VERSION,
             'NSHighResolutionCapable': True,
         },
     )
