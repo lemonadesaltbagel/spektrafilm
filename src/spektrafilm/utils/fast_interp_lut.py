@@ -318,46 +318,27 @@ def _warn_if_lut_not_monotonic_3d(
     axis_labels = ('r', 'g', 'b')
     channel_labels = ('out_r', 'out_g', 'out_b')
 
-    def iter_channel_lines(axis_index, channel_index):
-        if axis_index == 0:
-            for j in range(lut.shape[1]):
-                for k in range(lut.shape[2]):
-                    yield (j, k), lut[:, j, k, channel_index]
-        elif axis_index == 1:
-            for i in range(lut.shape[0]):
-                for k in range(lut.shape[2]):
-                    yield (i, k), lut[i, :, k, channel_index]
-        else:
-            for i in range(lut.shape[0]):
-                for j in range(lut.shape[1]):
-                    yield (i, j), lut[i, j, :, channel_index]
-
+    # Vectorized over all lines of an axis at once: looping over the LxL
+    # lines in Python made this check a sizeable share of each preview.
     for axis_index, axis_label in enumerate(axis_labels):
+        gradients = np.diff(lut, axis=axis_index)
+        line_max = np.max(gradients, axis=axis_index)
+        line_min = np.min(gradients, axis=axis_index)
         for channel_index, channel_label in enumerate(channel_labels):
-            worst_violation = 0.0
-            worst_min_gradient = 0.0
-            worst_max_gradient = 0.0
-            worst_line_index = None
-
-            for line_index, line in iter_channel_lines(axis_index, channel_index):
-                line_gradients = np.diff(line)
-                max_gradient = float(np.max(line_gradients))
-                min_gradient = float(np.min(line_gradients))
-
-                if max_gradient <= atol or min_gradient >= -atol:
-                    continue
-
-                violation = min(max_gradient, -min_gradient)
-                if violation <= worst_violation:
-                    continue
-
-                worst_violation = violation
-                worst_min_gradient = min_gradient
-                worst_max_gradient = max_gradient
-                worst_line_index = line_index
+            max_gradients = line_max[..., channel_index]
+            min_gradients = line_min[..., channel_index]
+            mixed = (max_gradients > atol) & (min_gradients < -atol)
+            violations = np.where(mixed, np.minimum(max_gradients, -min_gradients), 0.0)
+            worst_flat_index = int(np.argmax(violations))
+            worst_violation = float(violations.flat[worst_flat_index])
 
             if worst_violation <= max_violation_tol:
                 continue
+
+            worst_line_index = np.unravel_index(worst_flat_index, violations.shape)
+            worst_line_index = tuple(int(index) for index in worst_line_index)
+            worst_min_gradient = float(min_gradients.flat[worst_flat_index])
+            worst_max_gradient = float(max_gradients.flat[worst_flat_index])
 
             warnings.warn(
                 f'3D LUT is not monotone for {channel_label} along {axis_label} axis '
