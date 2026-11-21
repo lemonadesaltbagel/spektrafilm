@@ -99,6 +99,12 @@ def main() -> None:
         # keep the process alive after the window closes.
         sys.stdout.flush()
         sys.stderr.flush()
+        if sys.platform == 'win32':
+            # ExitProcess runs DLL detach handlers, which crash in Qt's thread
+            # storage while worker threads are still alive; skip them.
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            kernel32.TerminateProcess(kernel32.GetCurrentProcess(), status)
         os._exit(status)
 
     from spektrafilm_gui.app import main as gui_main
