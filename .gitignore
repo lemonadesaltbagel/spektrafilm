@@ -190,3 +190,5 @@ uv.lock
 
 # claude
 .claude
+# PyInstaller spec for the desktop app bundle
+!packaging/spektrafilm.spec

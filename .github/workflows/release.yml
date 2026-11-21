@@ -1,0 +1,124 @@
+name: Release
+
+# Builds standalone desktop bundles of the spektrafilm GUI with PyInstaller.
+# Pushing a tag like v0.3.4 also publishes them as a GitHub Release;
+# a manual run (workflow_dispatch) only uploads them as workflow artifacts.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Bundle (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+          - name: macos-arm64
+            os: macos-14
+          - name: windows-x86_64
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+          activate-environment: true
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Install Qt system libraries
+        if: runner.os == 'Linux'
+        uses: tlambert03/setup-qt-libs@v1
+
+      - name: Install package and PyInstaller
+        run: uv pip install . "pyinstaller>=6.11"
+
+      - name: Build bundle
+        run: pyinstaller --noconfirm --clean --distpath dist --workpath build/pyinstaller packaging/spektrafilm.spec
+
+      - name: Smoke test bundle
+        timeout-minutes: 15
+        env:
+          SPEKTRAFILM_SMOKE_TEST: '1'
+        run: |
+          case "$RUNNER_OS" in
+            Linux)
+              sudo apt-get install -y xvfb >/dev/null
+              xvfb-run -a dist/spektrafilm/spektrafilm ;;
+            macOS)
+              dist/spektrafilm.app/Contents/MacOS/spektrafilm ;;
+            Windows)
+              dist/spektrafilm/spektrafilm.exe ;;
+          esac
+
+      - name: Package bundle
+        id: package
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version="$GITHUB_REF_NAME"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          base="spektrafilm-${version}-${{ matrix.name }}"
+          case "$RUNNER_OS" in
+            Linux)
+              file="$base.tar.gz"
+              tar -czf "$file" -C dist spektrafilm ;;
+            macOS)
+              file="$base.dmg"
+              hdiutil create -volname spektrafilm -srcfolder dist/spektrafilm.app -ov -format UDZO "$file" ;;
+            Windows)
+              file="$base.zip"
+              (cd dist && 7z a -tzip "../$file" spektrafilm >/dev/null) ;;
+          esac
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.name }}
+          path: ${{ steps.package.outputs.file }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+
+      - name: Build sdist and wheel
+        run: uv build --out-dir release
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          path: release
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --title "spektrafilm $GITHUB_REF_NAME" \
+            --generate-notes
