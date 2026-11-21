@@ -169,6 +169,8 @@ def _make_gui_config_section(monkeypatch):
     monkeypatch.setattr(widgets_module, '_build_button_row', lambda *widgets, **kwargs: ('button-row', widgets, kwargs))
     monkeypatch.setattr(widgets_module, '_build_vertical_container', lambda *items, **kwargs: ('vertical-container', items, kwargs))
     monkeypatch.setattr(widgets_module, '_set_single_collapsible_layout', lambda *args, **kwargs: None)
+    monkeypatch.setattr(widgets_module, '_build_language_selector', lambda: 'language-selector')
+    monkeypatch.setattr(widgets_module, 'QLabel', lambda text: ('label', text))
     section = SimpleNamespace(
         save_current_as_default_requested=FakeNoArgSignal(),
         save_current_to_file_requested=FakeNoArgSignal(),

@@ -351,6 +351,13 @@ importer uses `rawpy` and converts the image to the current `input color space`
 and `apply CCTF decoding` settings. You can use `reprocess raw` to reload the
 same file and reprocess it with the new settings.
 
+The GUI is available in English and Simplified Chinese (简体中文). By default
+it follows the system language; pick one under `CONFIG` → `GUI parameters` →
+`language` (applies after a restart), or set `SPEKTRAFILM_LANG=en` /
+`SPEKTRAFILM_LANG=zh_CN`. Translations live in
+`src/spektrafilm_gui/locales/`; `python scripts/i18n_extract.py` lists
+strings that still need translating.
+
 > [!TIP] 
 > Hover over the widgets and controls to see a helpful tooltip.
 

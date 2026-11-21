@@ -5,6 +5,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 QPointF = getattr(QtCore, 'QPointF')
 QSize = getattr(QtCore, 'QSize')
 
+from spektrafilm_gui.i18n import is_translation, tr
 from spektrafilm_gui.theme_palette import (
     HEADER_DIVIDER_LINE,
     SIZE_FORM_SPACING,
@@ -17,7 +18,14 @@ from spektrafilm_gui.theme import resolve_theme_qcolor
 
 
 def normalize_ui_text(text: str) -> str:
-    return text.lower()
+    """Lower-case UI text (the GUI's style) and translate it.
+
+    Idempotent: text that is already translated is returned unchanged, so
+    lower-casing never mangles a translation (e.g. "RGB" in a Chinese label).
+    """
+    if is_translation(text):
+        return text
+    return tr(text.lower())
 
 
 def platform_default_font() -> QtGui.QFont:

@@ -12,6 +12,7 @@ QFormLayout = QtWidgets.QFormLayout
 QHBoxLayout = QtWidgets.QHBoxLayout
 QLabel = QtWidgets.QLabel
 QLineEdit = QtWidgets.QLineEdit
+QMessageBox = QtWidgets.QMessageBox
 QPushButton = QtWidgets.QPushButton
 QSizePolicy = QtWidgets.QSizePolicy
 QVBoxLayout = QtWidgets.QVBoxLayout
@@ -51,6 +52,13 @@ from spektrafilm_gui.persistence import load_dialog_dir, save_dialog_dir
 from spektrafilm_gui.theme_palette import SIZE_FOOTER_ITEM_SPACING
 from spektrafilm_gui.options import RawWhiteBalance
 from spektrafilm_gui.widget_editors import BoolEditor, EnumEditor, FloatEditor, FloatTupleEditor, IntEditor, IntTupleEditor, ProfileEnumEditor
+from spektrafilm_gui.i18n import (
+    AUTO_LANGUAGE,
+    SUPPORTED_LANGUAGES,
+    save_language_preference,
+    saved_language_preference,
+    tr,
+)
 from spektrafilm_gui.widget_primitives import CollapsibleSection, normalize_ui_text as _normalize_ui_text
 
 
@@ -168,11 +176,11 @@ def _build_button(
     preserve_case: bool = False,
     role: str | None = None,
 ) -> QPushButton:
-    button = QPushButton(text if preserve_case else _normalize_ui_text(text))
+    button = QPushButton(tr(text) if preserve_case else _normalize_ui_text(text))
     if role is not None:
         button.setProperty('role', role)
     if tooltip:
-        button.setToolTip(tooltip)
+        button.setToolTip(tr(tooltip))
     button.clicked.connect(callback)
     return button
 
@@ -182,7 +190,7 @@ def _build_widget_label(section_name: str, field_name: str) -> QLabel:
     label_text = (spec.label if spec is not None else None) or _format_label(field_name)
     label = QLabel(_normalize_ui_text(label_text))
     if spec is not None and spec.tooltip:
-        label.setToolTip(spec.tooltip)
+        label.setToolTip(tr(spec.tooltip))
     return label
 
 
@@ -191,7 +199,7 @@ def _build_auxiliary_label(name: str) -> QLabel:
     label_text = (spec.label if spec is not None else None) or name.replace("_", " ")
     label = QLabel(_normalize_ui_text(label_text))
     if spec is not None and spec.tooltip:
-        label.setToolTip(spec.tooltip)
+        label.setToolTip(tr(spec.tooltip))
     return label
 
 
@@ -230,7 +238,8 @@ def _set_single_collapsible_layout(widget: QWidget, title: str, content: QWidget
 
 
 def _format_label(field_name: str) -> str:
-    return _normalize_ui_text(field_name.replace("_", " "))
+    # Callers pass the result through _normalize_ui_text, which translates it.
+    return field_name.replace("_", " ").lower()
 
 
 def _apply_numeric_attr(widget: QWidget, method_name: str, value: float | int) -> None:
@@ -317,8 +326,8 @@ def _build_path_panel(
         editor = editors[spec.leaf]
         label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
         if spec.tooltip:
-            label.setToolTip(spec.tooltip)
-            editor.setToolTip(spec.tooltip)
+            label.setToolTip(tr(spec.tooltip))
+            editor.setToolTip(tr(spec.tooltip))
         form.addRow(label, editor)
     return _build_collapsible_form_section(title, form, expanded=expanded)
 
@@ -473,8 +482,8 @@ class ParamsGroupSection(QWidget):
             editor = self._editors[spec.leaf]
             label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
             if spec.tooltip:
-                label.setToolTip(spec.tooltip)
-                editor.setToolTip(spec.tooltip)
+                label.setToolTip(tr(spec.tooltip))
+                editor.setToolTip(tr(spec.tooltip))
             form.addRow(label, editor)
 
         content = QWidget()
@@ -515,7 +524,7 @@ class SpecialSection(QWidget):
         borrowed = SIMULATION_SPECIAL_BORROWED_FIELDS[0]
         borrowed_label = QLabel(_normalize_ui_text(borrowed.label or _format_label(borrowed.leaf)))
         if borrowed.tooltip:
-            borrowed_label.setToolTip(borrowed.tooltip)
+            borrowed_label.setToolTip(tr(borrowed.tooltip))
         form.addRow(borrowed_label, simulation_section.print_illuminant)
         for spec in SPECIAL_FIELDS:
             editor = _editor_from_param_spec(_path_annotation(SpecialState, spec.path), spec, label=spec.path)
@@ -525,8 +534,8 @@ class SpecialSection(QWidget):
                 continue
             label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
             if spec.tooltip:
-                label.setToolTip(spec.tooltip)
-                editor.setToolTip(spec.tooltip)
+                label.setToolTip(tr(spec.tooltip))
+                editor.setToolTip(tr(spec.tooltip))
             form.addRow(label, editor)
         self.setLayout(_build_collapsible_form_section('Experimental', form, expanded=False))
 
@@ -614,11 +623,35 @@ class GuiConfigSection(QWidget):
             self.restore_factory_default_requested.emit,
         )
 
+        self.language_selector = _build_language_selector()
+
         content = _build_vertical_container(
             _build_button_row(self.save_current_as_default_button, self.save_current_to_file_button),
             _build_button_row(self.load_from_file_button, self.restore_factory_default_button),
+            _build_button_row(QLabel(_normalize_ui_text('Language')), self.language_selector, stretch=1),
         )
         _set_single_collapsible_layout(self, 'GUI parameters', content, expanded=True)
+
+
+def _build_language_selector() -> QComboBox:
+    """Combo box that saves the UI language; the change applies on restart."""
+    combo = QComboBox()
+    combo.addItem(tr('Follow system'), AUTO_LANGUAGE)
+    for code, name in SUPPORTED_LANGUAGES.items():
+        combo.addItem(name, code)
+    combo.setCurrentIndex(max(0, combo.findData(saved_language_preference())))
+    combo.setToolTip(tr('Language of the user interface. Takes effect after restarting spektrafilm.'))
+
+    def on_changed(index: int) -> None:
+        save_language_preference(combo.itemData(index))
+        QMessageBox.information(
+            combo.window(),
+            tr('Language'),
+            tr('Restart spektrafilm to apply the new language.'),
+        )
+
+    combo.currentIndexChanged.connect(on_changed)
+    return combo
 
 
 class DisplaySection(QWidget):
@@ -645,8 +678,8 @@ class DisplaySection(QWidget):
             setattr(self, spec.leaf, editor)
             label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
             if spec.tooltip:
-                label.setToolTip(spec.tooltip)
-                editor.setToolTip(spec.tooltip)
+                label.setToolTip(tr(spec.tooltip))
+                editor.setToolTip(tr(spec.tooltip))
             widget: QWidget = editor
             if spec.leaf == 'preview_max_size':
                 widget = _build_vertical_container(_build_button_row(editor, self.update_preview_button, spacing=4), spacing=0)
@@ -697,7 +730,7 @@ class SimulationSection(QWidget):
         self.bottom_scan_for_print = BoolEditor()
         scan_for_print_spec = _AUXILIARY_FIELD_SPECS['scan_for_print']
         if scan_for_print_spec.tooltip:
-            self.bottom_scan_for_print.setToolTip(scan_for_print_spec.tooltip)
+            self.bottom_scan_for_print.setToolTip(tr(scan_for_print_spec.tooltip))
         self.bottom_scan_for_print.toggled.connect(self._apply_scan_for_print_mode)
         preview_button_spec = _SIMULATION_ACTION_BUTTON_SPECS['preview']
         self.preview_button = _build_button(
